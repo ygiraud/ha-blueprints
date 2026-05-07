@@ -20,12 +20,14 @@
 - ✅ Lecture de AGENTS.md, HANDOFF.md, README.md et de tous les blueprints YAML
 - ✅ Verification des liens d'import bases sur le depot `ygiraud/ha-blueprints`
 - ✅ Mise a jour des descriptions, prerequis et fichiers sources dans README.md
+- ✅ Suppression de la mention specifique `Reolink` dans la documentation et le nom du blueprint camera
 
 ---
 
 ## Modified Files
 
 - README.md - documentation des blueprints et liens GitHub/raw
+- mouvement_camera.yaml - nom du blueprint camera rendu generique
 - HANDOFF.md - etat du travail realise
 
 ---
@@ -36,6 +38,8 @@
   - Reason: Le README etait trop generique et omettait des prerequis importants
 - Decision: Conserver les liens d'import `raw.githubusercontent.com` sur la branche `main`
   - Reason: C'est le format attendu par l'import Home Assistant pour les blueprints distants
+- Decision: Retirer la mention `Reolink` du blueprint camera
+  - Reason: Le blueprint repose sur une entité `camera` standard et n'est pas limite a cette marque
 
 ---
 

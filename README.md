@@ -58,7 +58,7 @@ Fichier source : [`lumiere_auto_presence.yaml`](https://github.com/ygiraud/ha-bl
 
 [![Importer dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/ygiraud/ha-blueprints/main/lumiere_auto_presence.yaml)
 
-### Reolink - Snapshot et notification mouvement
+### Snapshot et notification mouvement
 
 Prend un snapshot d'une camera puis cree un evenement `Notification Engine` avec image lorsqu'un des capteurs de detection associes passe a `on`.
 

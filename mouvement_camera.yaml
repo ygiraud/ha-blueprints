@@ -1,5 +1,5 @@
 blueprint:
-  name: Reolink - Snapshot et notification mouvement
+  name: Snapshot et notification mouvement
   description: Prend un snapshot caméra et crée un événement Notification Engine avec image.
   domain: automation
 
