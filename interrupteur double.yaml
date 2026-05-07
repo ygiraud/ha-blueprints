@@ -1,0 +1,70 @@
+blueprint:
+  name: Interrupteur double
+  description: Bascule la lumière lors d'un appui sur l'interrupteur.
+  domain: automation
+  author: Yoan
+  input:
+    switch_device:
+      name: Interrupteur
+      description: Interrupteur SONOFF
+      selector:
+        device:
+          filter:
+            manufacturer: SONOFF
+          multiple: false
+
+    light1:
+      name: Lumière 1
+      selector:
+        entity:
+          filter:
+            - domain: light
+
+    light2:
+      name: Lumière 2
+      selector:
+        entity:
+          filter:
+            - domain: light
+
+triggers:
+  - alias: Bouton 1
+    trigger: device
+    domain: mqtt
+    device_id: !input switch_device
+    type: action
+    subtype: toggle_l1
+    id: bouton_1
+
+  - alias: Bouton 2
+    trigger: device
+    domain: mqtt
+    device_id: !input switch_device
+    type: action
+    subtype: toggle_l2
+    id: bouton_2
+
+actions:
+  - alias: Gestion des boutons
+    choose:
+      - alias: Basculer la lumière 1
+        conditions:
+          - condition: trigger
+            id:
+              - bouton_1
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: !input light1
+
+      - alias: Basculer la lumière 2
+        conditions:
+          - condition: trigger
+            id:
+              - bouton_2
+        sequence:
+          - action: light.toggle
+            target:
+              entity_id: !input light2
+
+mode: single

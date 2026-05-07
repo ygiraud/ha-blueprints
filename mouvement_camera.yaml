@@ -1,0 +1,118 @@
+blueprint:
+  name: Reolink - Snapshot et notification mouvement
+  description: Prend un snapshot caméra et crée un événement Notification Engine avec image.
+  domain: automation
+
+  input:
+    camera:
+      name: Caméra
+      selector:
+        entity:
+          domain: camera
+
+    motion_sensors:
+      name: Capteur(s) de détection associés
+      description: Mouvement, personne, véhicule, etc.
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    persons:
+      name: Personne(s) à notifier
+      selector:
+        entity:
+          domain: person
+          multiple: true
+
+    hub_mode:
+      name: Sélecteur du mode hub
+      default: select.hub_mode_scenario
+      selector:
+        entity:
+          domain: select
+
+    hub_allowed_states:
+      name: États du hub autorisant la notification
+      description: Une ou plusieurs valeurs exactes du sélecteur de mode hub
+      default:
+        - away
+      selector:
+        select:
+          multiple: true
+          custom_value: true
+          options:
+            - away
+
+variables:
+  camera_entity: !input camera
+  motion_sensors: !input motion_sensors
+  persons: !input persons
+  hub_mode_entity: !input hub_mode
+  hub_allowed_states: !input hub_allowed_states
+  camera_id: "{{ camera_entity.split('.')[1] }}"
+  camera_name: "{{ state_attr(camera_entity, 'friendly_name') | default(camera_id, true) }}"
+  snapshot_file: "{{ '/config/www/' ~ camera_id ~ '.jpg' }}"
+  snapshot_url: "{{ '/local/' ~ camera_id ~ '.jpg' }}"
+  trigger_entity: "{{ trigger.entity_id }}"
+  trigger_name: "{{ trigger.to_state.name | default(trigger_entity, true) }}"
+  event_type: >-
+    {% set eid = trigger_entity | lower %}
+    {% if 'personne' in eid or 'person' in eid %}
+      personne detectee
+    {% elif 'vehicule' in eid or 'vehicle' in eid or 'voiture' in eid or 'car' in eid %}
+      vehicule detecte
+    {% elif 'animal' in eid %}
+      animal detecte
+    {% elif 'mouvement' in eid or 'motion' in eid %}
+      mouvement detecte
+    {% else %}
+      activite detectee
+    {% endif %}
+  event_emoji: >-
+    {% set eid = trigger_entity | lower %}
+    {% if 'personne' in eid or 'person' in eid %}
+      🚶
+    {% elif 'vehicule' in eid or 'vehicle' in eid or 'voiture' in eid or 'car' in eid %}
+      🚗
+    {% elif 'animal' in eid %}
+      🐾
+    {% elif 'mouvement' in eid or 'motion' in eid %}
+      📷
+    {% else %}
+      🔔
+    {% endif %}
+
+trigger:
+  - platform: state
+    entity_id: !input motion_sensors
+    to: "on"
+
+condition:
+  - condition: template
+    value_template: "{{ states(hub_mode_entity) in hub_allowed_states }}"
+
+  - condition: template
+    value_template: "{{ persons | length > 0 }}"
+
+action:
+  - alias: Prendre le snapshot
+    action: camera.snapshot
+    target:
+      entity_id: !input camera
+    data:
+      filename: "{{ snapshot_file }}"
+
+  - alias: Creer l'evenement Notification Engine
+    action: notification_engine.create_event
+    data:
+      key: "{{ 'camera_' ~ camera_id ~ '_' ~ trigger_entity.split('.')[1] }}"
+      source_entity: "{{ trigger_entity }}"
+      context_label: "{{ camera_name }}"
+      strategy: info
+      title: "{{ event_emoji }} {{ event_type | capitalize }}"
+      message: "{{ camera_name }} - {{ event_type }} via {{ trigger_name }}"
+      targets: "{{ persons }}"
+      image_url: "{{ snapshot_url }}"
+
+mode: single

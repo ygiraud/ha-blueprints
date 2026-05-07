@@ -1,0 +1,78 @@
+blueprint:
+  name: Veilleuse
+  description: Allume la lumière quand un mouvement est detecté la nuit.
+  domain: automation
+  author: Yoan
+  input:
+    motion_entity:
+      name: Capteur de mouvements
+      selector:
+        entity:
+          filter:
+            - device_class: occupancy
+              domain: binary_sensor
+            - device_class: motion
+              domain: binary_sensor
+    light:
+      name: Lumière
+      selector:
+        entity:
+          filter:
+            - domain: light
+    no_motion_wait:
+      name: Temps d'attente
+      default: 10
+      selector:
+        number:
+          min: 0
+          max: 3600
+          unit_of_measurement: seconds
+    brightness:
+      name: Luminosité
+      default: 1
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+# If motion is detected within the delay,
+# we restart the script.
+mode: restart
+max_exceeded: silent
+
+triggers:
+  trigger: state
+  entity_id: !input motion_entity
+  from: "off"
+  to: "on"
+
+conditions:
+  - condition: and
+    conditions:
+      - condition: sun
+        before: sunrise
+        after: sunset
+      - condition: state
+        entity_id: !input light
+        state: "off"
+
+actions:
+  - service: light.turn_on
+    metadata: {}
+    data:
+      kelvin: 2000
+      brightness_pct: !input brightness
+      entity_id: !input light
+  - alias: "Attend l'absence de mouvements"
+    wait_for_trigger:
+      trigger: state
+      entity_id: !input motion_entity
+      from: "on"
+      to: "off"
+  - alias: "Attend un temps défini"
+    delay: !input no_motion_wait
+  - service: light.turn_off
+    metadata: {}
+    data:
+      entity_id: !input light

@@ -1,0 +1,34 @@
+blueprint:
+  name: Interrupteur simple lumière
+  description: Bascule la lumière lors d'un appui sur l'interrupteur.
+  domain: automation
+  author: Yoan
+  input:
+    switch_device:
+      name: Interrupteur
+      selector:
+        device:
+          filter:
+            manufacturer: SONOFF
+          multiple: false
+
+    light_entity:
+      name: Lumière
+      selector:
+        entity:
+          filter:
+            - domain: light
+
+triggers:
+  - trigger: device
+    domain: mqtt
+    device_id: !input switch_device
+    type: action
+    subtype: toggle
+
+actions:
+  - action: light.toggle
+    target:
+      entity_id: !input light_entity
+
+mode: single

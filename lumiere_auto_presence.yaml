@@ -1,0 +1,63 @@
+blueprint:
+  name: Lumière automatique sur présence
+  description: Allume ou éteint la lumière en fonction de la présence dans la pièce
+  domain: automation
+  author: Yoan
+  input:
+    presence_entity:
+      name: Capteur
+      description: Capteur de présence
+      selector:
+        entity:
+          filter:
+            - domain: binary_sensor
+              device_class: occupancy
+
+    light_target:
+      name: Lumière
+      description: Lumière
+      selector:
+        target:
+          entity:
+            - domain: light
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - alias: Présence détectée
+    trigger: state
+    entity_id: !input presence_entity
+    from: "off"
+    to: "on"
+    id: present
+
+  - alias: Absence détectée
+    trigger: state
+    entity_id: !input presence_entity
+    from: "on"
+    to: "off"
+    id: absent
+
+actions:
+  - alias: Gérer la lumière selon la présence
+    choose:
+      - alias: Allumer si présence détectée
+        conditions:
+          - condition: trigger
+            id:
+              - present
+        sequence:
+          - alias: Allumer la lumière
+            action: light.turn_on
+            target: !input light_target
+
+      - alias: Éteindre si absence détectée
+        conditions:
+          - condition: trigger
+            id:
+              - absent
+        sequence:
+          - alias: Éteindre la lumière
+            action: light.turn_off
+            target: !input light_target

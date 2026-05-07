@@ -1,0 +1,791 @@
+blueprint:
+  name: Chauffage par pièce
+  description: >-
+    Pilote le chauffage d'une pièce avec une logique simple et lisible :
+    vannes Netatmo via température de consigne et modules fil pilote NodOn via select.
+    Les appels Netatmo passent par un script sécurisé pour éviter les limites API.
+    Si aucune personne n'est définie, la présence est déduite de input_select.mode_de_maison.
+    L'absence est prise en compte après un délai, quelle que soit la source de présence.
+  domain: automation
+  homeassistant:
+    min_version: 2024.6.0
+  input:
+    chauffage_section:
+      name: Chauffages
+      icon: mdi:radiator
+      description: Sélection des équipements de chauffage à piloter dans la pièce.
+      input:
+        climate_entities:
+          name: Chauffages Netatmo
+          description: Liste optionnelle des entités climate à piloter.
+          default: []
+          selector:
+            entity:
+              domain: climate
+              multiple: true
+        nodon_select_entities:
+          name: Chauffages NodOn
+          description: Liste optionnelle des entités select à piloter.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - integration: mqtt
+                  domain: select
+
+    presence_section:
+      name: Présence
+      icon: mdi:account-group
+      description: >-
+        Si aucune personne n'est définie, la présence est déterminée par
+        input_select.mode_de_maison.
+      input:
+        persons:
+          name: Personnes à surveiller
+          description: >-
+            Si vide, la présence est déterminée par input_select.mode_de_maison.
+            Sinon, il suffit qu'une de ces personnes soit à la maison.
+          default: []
+          selector:
+            entity:
+              domain: person
+              multiple: true
+        absence_delay:
+          name: Délai avant prise en compte de l'absence
+          description: >-
+            Temps pendant lequel l'absence doit durer avant d'appliquer
+            le mode absence.
+          default: 60
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        mode_absence:
+          name: Mode si absence
+          default: éco
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+
+    fenetres_section:
+      name: Fenêtres
+      icon: mdi:window-open-variant
+      description: Paramètres utilisés pour réduire le chauffage quand une fenêtre reste ouverte.
+      collapsed: true
+      input:
+        window_sensors:
+          name: Capteurs de fenêtre
+          description: Liste optionnelle de capteurs d'ouverture.
+          default: []
+          selector:
+            entity:
+              domain: binary_sensor
+              multiple: true
+        window_open_delay:
+          name: Délai avant prise en compte d'une fenêtre ouverte
+          description: >-
+            Temps pendant lequel une fenêtre doit rester ouverte avant d'appliquer
+            le mode fenêtre.
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 60
+              step: 1
+              mode: box
+              unit_of_measurement: min
+        mode_fenetre:
+          name: Mode si une fenêtre est ouverte
+          default: hors-gel
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+
+    temperatures_section:
+      name: Températures
+      icon: mdi:thermometer
+      description: Réglages thermiques utilisés pour calculer les consignes Netatmo.
+      collapsed: true
+      input:
+        confort_temperature:
+          name: Température de confort
+          description: Température de référence utilisée pour calculer les consignes Netatmo.
+          default: 19
+          selector:
+            number:
+              min: 7
+              max: 25
+              step: 0.5
+              mode: box
+              unit_of_measurement: "°C"
+        eco_delta:
+          name: Écart pour le mode éco
+          description: Soustraction appliquée à la température de confort pour le mode éco.
+          default: 3
+          selector:
+            number:
+              min: 0
+              max: 8
+              step: 0.5
+              mode: box
+              unit_of_measurement: "°C"
+        hors_gel_temperature:
+          name: Température hors-gel
+          description: Température appliquée aux Netatmo en mode hors-gel.
+          default: 7
+          selector:
+            number:
+              min: 5
+              max: 12
+              step: 0.5
+              mode: box
+              unit_of_measurement: "°C"
+
+    plages_semaine_section:
+      name: Plages semaine
+      icon: mdi:clock-outline
+      description: Heures de début des plages utilisées pour calculer la plage courante en semaine.
+      collapsed: true
+      input:
+        semaine_debut_nuit:
+          name: Semaine - début nuit
+          default: "22:00:00"
+          selector:
+            time: {}
+        semaine_debut_matin:
+          name: Semaine - début matin
+          default: "06:30:00"
+          selector:
+            time: {}
+        semaine_debut_journee:
+          name: Semaine - début journée
+          default: "08:30:00"
+          selector:
+            time: {}
+        semaine_debut_soir:
+          name: Semaine - début soir
+          default: "18:00:00"
+          selector:
+            time: {}
+
+    modes_semaine_section:
+      name: Modes semaine
+      icon: mdi:calendar-clock
+      description: Modes de chauffage appliqués selon la plage horaire active en semaine.
+      collapsed: true
+      input:
+        mode_nuit:
+          name: Mode nuit
+          default: éco
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        mode_matin:
+          name: Mode matin
+          default: confort
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        mode_journee:
+          name: Mode journée
+          default: éco
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        mode_soir:
+          name: Mode soir
+          default: confort
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+
+    plages_weekend_section:
+      name: Plages week-end
+      icon: mdi:clock-outline
+      description: Heures de début des plages utilisées pour calculer la plage courante le week-end.
+      collapsed: true
+      input:
+        weekend_debut_nuit:
+          name: Week-end - début nuit
+          default: "22:30:00"
+          selector:
+            time: {}
+        weekend_debut_matin:
+          name: Week-end - début matin
+          default: "08:00:00"
+          selector:
+            time: {}
+        weekend_debut_journee:
+          name: Week-end - début journée
+          default: "10:00:00"
+          selector:
+            time: {}
+        weekend_debut_soir:
+          name: Week-end - début soir
+          default: "18:00:00"
+          selector:
+            time: {}
+
+    modes_weekend_section:
+      name: Modes week-end
+      icon: mdi:calendar-weekend
+      description: Modes de chauffage appliqués selon la plage horaire active le week-end.
+      collapsed: true
+      input:
+        weekend_mode_nuit:
+          name: Mode nuit
+          default: éco
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        weekend_mode_matin:
+          name: Mode matin
+          default: confort
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        weekend_mode_journee:
+          name: Mode journée
+          default: éco
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+        weekend_mode_soir:
+          name: Mode soir
+          default: confort
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Confort
+                  value: confort
+                - label: Confort -1
+                  value: confort -1
+                - label: Confort -2
+                  value: confort -2
+                - label: Éco
+                  value: éco
+                - label: Hors-gel
+                  value: hors-gel
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - alias: Réévaluation périodique
+    trigger: time_pattern
+    minutes: "/30"
+    id: reevaluation_periodique
+
+  - alias: Mode de maison modifié
+    trigger: state
+    entity_id: input_select.mode_de_maison
+    id: mode_maison
+
+  - alias: Mode de maison absent avec délai
+    trigger: state
+    entity_id: input_select.mode_de_maison
+    to: "Absent"
+    for:
+      minutes: !input absence_delay
+    id: absence_confirmee_mode_maison
+
+  - alias: Personnes surveillées modifiées
+    trigger: state
+    entity_id: !input persons
+    id: presence_personnes
+
+  - alias: Absence confirmée des personnes suivies
+    trigger: template
+    value_template: >-
+      {% set personnes = expand(persons) | list %}
+      {% if personnes | count > 0 %}
+        {{ personnes | selectattr('state', 'eq', 'home') | list | count == 0 }}
+      {% else %}
+        false
+      {% endif %}
+    for:
+      minutes: !input absence_delay
+    id: absence_confirmee_personnes
+    variables:
+      persons: !input persons
+
+  - alias: Fenêtre ouverte avec délai
+    trigger: state
+    entity_id: !input window_sensors
+    to: "on"
+    for:
+      minutes: !input window_open_delay
+    id: fenetre_ouverte_delai
+
+  - alias: Fenêtre fermée
+    trigger: state
+    entity_id: !input window_sensors
+    to: "off"
+    id: fenetre_fermee
+
+  - alias: Début nuit semaine
+    trigger: time
+    at: !input semaine_debut_nuit
+    weekday: [mon, tue, wed, thu, fri]
+    id: semaine_debut_nuit
+
+  - alias: Début matin semaine
+    trigger: time
+    at: !input semaine_debut_matin
+    weekday: [mon, tue, wed, thu, fri]
+    id: semaine_debut_matin
+
+  - alias: Début journée semaine
+    trigger: time
+    at: !input semaine_debut_journee
+    weekday: [mon, tue, wed, thu, fri]
+    id: semaine_debut_journee
+
+  - alias: Début soir semaine
+    trigger: time
+    at: !input semaine_debut_soir
+    weekday: [mon, tue, wed, thu, fri]
+    id: semaine_debut_soir
+
+  - alias: Début nuit week-end
+    trigger: time
+    at: !input weekend_debut_nuit
+    weekday: [sat, sun]
+    id: weekend_debut_nuit
+
+  - alias: Début matin week-end
+    trigger: time
+    at: !input weekend_debut_matin
+    weekday: [sat, sun]
+    id: weekend_debut_matin
+
+  - alias: Début journée week-end
+    trigger: time
+    at: !input weekend_debut_journee
+    weekday: [sat, sun]
+    id: weekend_debut_journee
+
+  - alias: Début soir week-end
+    trigger: time
+    at: !input weekend_debut_soir
+    weekday: [sat, sun]
+    id: weekend_debut_soir
+
+condition: []
+
+action:
+  - alias: Initialisation du contexte
+    variables:
+      action_effectuee: false
+      contexte: ""
+      details_debug: ""
+      personnes_surveillees: !input persons
+      fenetres_surveillees: !input window_sensors
+      climate_entity_ids: !input climate_entities
+      nodon_entity_ids: !input nodon_select_entities
+      delai_fenetre: !input window_open_delay
+      delai_absence: !input absence_delay
+      temperature_confort: !input confort_temperature
+      delta_eco: !input eco_delta
+      temperature_hors_gel: !input hors_gel_temperature
+      mode_fenetre_configure: !input mode_fenetre
+      mode_absence_configure: !input mode_absence
+      mode_nuit_configure: !input mode_nuit
+      mode_matin_configure: !input mode_matin
+      mode_journee_configure: !input mode_journee
+      mode_soir_configure: !input mode_soir
+      weekend_mode_nuit_configure: !input weekend_mode_nuit
+      weekend_mode_matin_configure: !input weekend_mode_matin
+      weekend_mode_journee_configure: !input weekend_mode_journee
+      weekend_mode_soir_configure: !input weekend_mode_soir
+      semaine_nuit: !input semaine_debut_nuit
+      semaine_matin: !input semaine_debut_matin
+      semaine_journee: !input semaine_debut_journee
+      semaine_soir: !input semaine_debut_soir
+      weekend_nuit: !input weekend_debut_nuit
+      weekend_matin: !input weekend_debut_matin
+      weekend_journee: !input weekend_debut_journee
+      weekend_soir: !input weekend_debut_soir
+      mode_maison: "{{ states('input_select.mode_de_maison') }}"
+      presence_active: >-
+        {% set personnes = expand(personnes_surveillees | default([], true)) | list %}
+        {% if personnes | count > 0 %}
+          {{ personnes | selectattr('state', 'eq', 'home') | list | count > 0 }}
+        {% else %}
+          {{ states('input_select.mode_de_maison') != 'Absent' }}
+        {% endif %}
+      absence_confirmee: >-
+        {% set absence_par_trigger = trigger.id in ['absence_confirmee_mode_maison', 'absence_confirmee_personnes'] %}
+        {% if absence_par_trigger %}
+          true
+        {% elif trigger.id == 'reevaluation_periodique' and not (presence_active | bool) %}
+          {% set delai = delai_absence | int(0) %}
+          {% set personnes = expand(personnes_surveillees | default([], true)) | list %}
+          {% if delai == 0 %}
+            true
+          {% elif personnes | count > 0 %}
+            {% set personnes_absentes = personnes | rejectattr('state', 'eq', 'home') | list %}
+            {% if personnes_absentes | count == personnes | count %}
+              {% set debut_absence = personnes_absentes | map(attribute='last_changed') | map('as_timestamp') | max(default=as_timestamp(now())) %}
+              {{ (as_timestamp(now()) - debut_absence) >= (delai * 60) }}
+            {% else %}
+              false
+            {% endif %}
+          {% else %}
+            {% set mode_maison_entity = states.input_select.mode_de_maison %}
+            {% if mode_maison_entity is not none and mode_maison_entity.state == 'Absent' %}
+              {{ (as_timestamp(now()) - as_timestamp(mode_maison_entity.last_changed)) >= (delai * 60) }}
+            {% else %}
+              false
+            {% endif %}
+          {% endif %}
+        {% else %}
+          false
+        {% endif %}
+      fenetre_ouverte: >-
+        {% set fenetres = expand(fenetres_surveillees) | list %}
+        {% if fenetres | count == 0 %}
+          false
+        {% else %}
+          {{ fenetres | selectattr('state', 'in', ['on', 'open']) | list | count > 0 }}
+        {% endif %}
+      type_jour: >-
+        {% if now().isoweekday() in [6, 7] %}
+          week-end
+        {% else %}
+          semaine
+        {% endif %}
+      heure_actuelle: "{{ now().strftime('%H:%M:%S') }}"
+      plage_courante: >-
+        {% if now().isoweekday() in [6, 7] %}
+          {% set debut_nuit = weekend_nuit %}
+          {% set debut_matin = weekend_matin %}
+          {% set debut_journee = weekend_journee %}
+          {% set debut_soir = weekend_soir %}
+        {% else %}
+          {% set debut_nuit = semaine_nuit %}
+          {% set debut_matin = semaine_matin %}
+          {% set debut_journee = semaine_journee %}
+          {% set debut_soir = semaine_soir %}
+        {% endif %}
+        {% if heure_actuelle >= debut_nuit or heure_actuelle < debut_matin %}
+          nuit
+        {% elif heure_actuelle >= debut_matin and heure_actuelle < debut_journee %}
+          matin
+        {% elif heure_actuelle >= debut_journee and heure_actuelle < debut_soir %}
+          journée
+        {% else %}
+          soir
+        {% endif %}
+      mode_calcule: >-
+        {% if fenetre_ouverte | bool %}
+          {{ mode_fenetre_configure }}
+        {% elif absence_confirmee | bool %}
+          {{ mode_absence_configure }}
+        {% elif type_jour == 'week-end' and plage_courante == 'nuit' %}
+          {{ weekend_mode_nuit_configure }}
+        {% elif type_jour == 'week-end' and plage_courante == 'matin' %}
+          {{ weekend_mode_matin_configure }}
+        {% elif type_jour == 'week-end' and plage_courante == 'journée' %}
+          {{ weekend_mode_journee_configure }}
+        {% elif type_jour == 'week-end' and plage_courante == 'soir' %}
+          {{ weekend_mode_soir_configure }}
+        {% elif plage_courante == 'nuit' %}
+          {{ mode_nuit_configure }}
+        {% elif plage_courante == 'matin' %}
+          {{ mode_matin_configure }}
+        {% elif plage_courante == 'journée' %}
+          {{ mode_journee_configure }}
+        {% else %}
+          {{ mode_soir_configure }}
+        {% endif %}
+      temperature_cible: >-
+        {% if mode_calcule == 'confort' %}
+          {{ temperature_confort }}
+        {% elif mode_calcule == 'confort -1' %}
+          {{ temperature_confort - 1 }}
+        {% elif mode_calcule == 'confort -2' %}
+          {{ temperature_confort - 2 }}
+        {% elif mode_calcule == 'éco' %}
+          {{ temperature_confort - delta_eco }}
+        {% else %}
+          {{ temperature_hors_gel }}
+        {% endif %}
+      option_nodon: >-
+        {% if mode_calcule == 'confort' %}
+          comfort
+        {% elif mode_calcule == 'confort -1' %}
+          comfort_-1
+        {% elif mode_calcule == 'confort -2' %}
+          comfort_-2
+        {% elif mode_calcule == 'éco' %}
+          eco
+        {% elif mode_calcule == 'hors-gel' %}
+          frost_protection
+        {% else %}
+          eco
+        {% endif %}
+
+  - alias: Logique métier
+    choose:
+      - alias: Fenêtre ouverte
+        conditions:
+          - alias: Vérifier qu'une fenêtre est ouverte
+            condition: template
+            value_template: "{{ fenetre_ouverte | bool }}"
+        sequence:
+          - alias: Appliquer la température aux Netatmo
+            if:
+              - alias: Vérifier la présence de chauffages Netatmo
+                condition: template
+                value_template: "{{ climate_entity_ids | count > 0 }}"
+            then:
+              - alias: Régler les Netatmo
+                action: script.set_netatmo_temperature_safe
+                data:
+                  target:
+                    entity_id: !input climate_entities
+                  temperature: "{{ temperature_cible | float }}"
+          - alias: Appliquer le mode aux NodOn
+            if:
+              - alias: Vérifier la présence de chauffages NodOn
+                condition: template
+                value_template: "{{ nodon_entity_ids | count > 0 }}"
+            then:
+              - alias: Régler les NodOn
+                action: select.select_option
+                target:
+                  entity_id: !input nodon_select_entities
+                data:
+                  option: "{{ option_nodon }}"
+          - alias: Préparer le contexte
+            variables:
+              action_effectuee: true
+              contexte: "Chauffage réduit car une fenêtre est ouverte"
+              details_debug: >-
+                trigger: {{ trigger.id if trigger is defined and trigger.id is defined else 'manuel' }}
+                | mode_maison: {{ mode_maison }}
+                | delai_absence_min: {{ delai_absence }}
+                | delai_fenetre_min: {{ delai_fenetre }}
+                | type_jour: {{ type_jour }}
+                | plage: {{ plage_courante }}
+                | presence: {{ presence_active }}
+                | absence_confirmee: {{ absence_confirmee }}
+                | fenetre_ouverte: {{ fenetre_ouverte }}
+                | mode: {{ mode_calcule }}
+                | mode_nodon: {{ option_nodon }}
+                | temperature: {{ temperature_cible }}
+
+      - alias: Absence confirmée
+        conditions:
+          - alias: Vérifier l'absence confirmée
+            condition: template
+            value_template: "{{ absence_confirmee | bool }}"
+        sequence:
+          - alias: Appliquer la température aux Netatmo
+            if:
+              - alias: Vérifier la présence de chauffages Netatmo
+                condition: template
+                value_template: "{{ climate_entity_ids | count > 0 }}"
+            then:
+              - alias: Régler les Netatmo
+                action: script.set_netatmo_temperature_safe
+                data:
+                  target:
+                    entity_id: !input climate_entities
+                  temperature: "{{ temperature_cible | float }}"
+          - alias: Appliquer le mode aux NodOn
+            if:
+              - alias: Vérifier la présence de chauffages NodOn
+                condition: template
+                value_template: "{{ nodon_entity_ids | count > 0 }}"
+            then:
+              - alias: Régler les NodOn
+                action: select.select_option
+                target:
+                  entity_id: !input nodon_select_entities
+                data:
+                  option: "{{ option_nodon }}"
+          - alias: Préparer le contexte
+            variables:
+              action_effectuee: true
+              contexte: "Chauffage réduit en absence"
+              details_debug: >-
+                trigger: {{ trigger.id if trigger is defined and trigger.id is defined else 'manuel' }}
+                | mode_maison: {{ mode_maison }}
+                | delai_absence_min: {{ delai_absence }}
+                | delai_fenetre_min: {{ delai_fenetre }}
+                | type_jour: {{ type_jour }}
+                | plage: {{ plage_courante }}
+                | presence: {{ presence_active }}
+                | absence_confirmee: {{ absence_confirmee }}
+                | fenetre_ouverte: {{ fenetre_ouverte }}
+                | mode: {{ mode_calcule }}
+                | mode_nodon: {{ option_nodon }}
+                | temperature: {{ temperature_cible }}
+
+    default:
+      - alias: Appliquer la température aux Netatmo
+        if:
+          - alias: Vérifier la présence de chauffages Netatmo
+            condition: template
+            value_template: "{{ climate_entity_ids | count > 0 }}"
+        then:
+          - alias: Régler les Netatmo
+            action: script.set_netatmo_temperature_safe
+            data:
+              target:
+                entity_id: !input climate_entities
+              temperature: "{{ temperature_cible | float }}"
+      - alias: Appliquer le mode aux NodOn
+        if:
+          - alias: Vérifier la présence de chauffages NodOn
+            condition: template
+            value_template: "{{ nodon_entity_ids | count > 0 }}"
+        then:
+          - alias: Régler les NodOn
+            action: select.select_option
+            target:
+              entity_id: !input nodon_select_entities
+            data:
+              option: "{{ option_nodon }}"
+      - alias: Préparer le contexte
+        variables:
+          action_effectuee: true
+          contexte: "Chauffage piloté selon la plage horaire"
+          details_debug: >-
+            trigger: {{ trigger.id if trigger is defined and trigger.id is defined else 'manuel' }}
+            | mode_maison: {{ mode_maison }}
+            | delai_absence_min: {{ delai_absence }}
+            | delai_fenetre_min: {{ delai_fenetre }}
+            | type_jour: {{ type_jour }}
+            | plage: {{ plage_courante }}
+            | presence: {{ presence_active }}
+            | absence_confirmee: {{ absence_confirmee }}
+            | fenetre_ouverte: {{ fenetre_ouverte }}
+            | mode: {{ mode_calcule }}
+            | mode_nodon: {{ option_nodon }}
+            | temperature: {{ temperature_cible }}
+
+  - alias: Debug
+    if:
+      - condition: template
+        value_template: "{{ action_effectuee | bool and is_state('input_boolean.debug', 'on') }}"
+    then:
+      - alias: Envoyer debug via notification engine
+        action: notification_engine.create_event
+        target:
+          entity_id:
+            - person.yoan
+        data:
+          key: debug_chauffage
+          strategy: info
+          title: "🔥 {{ this.attributes.friendly_name }}"
+          message: >-
+            {{ contexte }}{% if details_debug | default('', true) | trim != '' %} | {{ details_debug }}{% endif %}
+          source_entity: "{{ this.entity_id }}"
+          context_label: "{{ this.attributes.friendly_name }}"
