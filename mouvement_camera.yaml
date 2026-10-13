@@ -105,6 +105,8 @@ action:
 
   - alias: Creer l'evenement Notification Engine
     action: notification_engine.create_event
+    target:
+      entity_id: !input persons
     data:
       key: "{{ 'camera_' ~ camera_id ~ '_' ~ trigger_entity.split('.')[1] }}"
       source_entity: "{{ trigger_entity }}"
@@ -112,7 +114,6 @@ action:
       strategy: info
       title: "{{ event_emoji }} {{ event_type | capitalize }}"
       message: "{{ camera_name }} - {{ event_type }} via {{ trigger_name }}"
-      targets: "{{ persons }}"
       image_url: "{{ snapshot_url }}"
 
 mode: single
