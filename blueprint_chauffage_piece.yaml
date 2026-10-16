@@ -399,9 +399,16 @@ trigger:
       minutes: !input absence_delay
     id: absence_confirmee_mode_maison
 
-  - alias: Personnes surveillées modifiées
+  - alias: Personne quitte la maison
     trigger: state
     entity_id: !input persons
+    from: home
+    id: presence_personnes
+
+  - alias: Personne arrive à la maison
+    trigger: state
+    entity_id: !input persons
+    to: home
     id: presence_personnes
 
   - alias: Absence confirmée des personnes suivies
@@ -532,7 +539,7 @@ action:
         {% set absence_par_trigger = trigger.id in ['absence_confirmee_mode_maison', 'absence_confirmee_personnes'] %}
         {% if absence_par_trigger %}
           true
-        {% elif trigger.id == 'reevaluation_periodique' and not (presence_active | bool) %}
+        {% elif not (presence_active | bool) %}
           {% set delai = delai_absence | int(0) %}
           {% set personnes = expand(personnes_surveillees | default([], true)) | list %}
           {% if delai == 0 %}
@@ -540,8 +547,14 @@ action:
           {% elif personnes | count > 0 %}
             {% set personnes_absentes = personnes | rejectattr('state', 'eq', 'home') | list %}
             {% if personnes_absentes | count == personnes | count %}
-              {% set ts_absence = personnes_absentes | map(attribute='last_changed') | map('as_timestamp') | list %}
-              {% set debut_absence = ts_absence | max if ts_absence | count > 0 else as_timestamp(now()) %}
+              {# Départ de la maison : le capteur <personne>_a_la_maison ne bascule qu'entre home et hors home, #}
+              {# contrairement à person.* dont last_changed est remis à zéro à chaque changement de zone. #}
+              {% set ts_absence = namespace(valeurs=[]) %}
+              {% for p in personnes_absentes %}
+                {% set suivi = states['binary_sensor.' ~ p.object_id ~ '_a_la_maison'] %}
+                {% set ts_absence.valeurs = ts_absence.valeurs + [as_timestamp((suivi if suivi is not none else p).last_changed)] %}
+              {% endfor %}
+              {% set debut_absence = ts_absence.valeurs | max if ts_absence.valeurs | count > 0 else as_timestamp(now()) %}
               {{ (as_timestamp(now()) - debut_absence) >= (delai * 60) }}
             {% else %}
               false
