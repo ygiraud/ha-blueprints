@@ -61,7 +61,7 @@ actions:
   - service: light.turn_on
     metadata: {}
     data:
-      kelvin: 2000
+      color_temp_kelvin: 2000
       brightness_pct: !input brightness
       entity_id: !input light
   - alias: "Attend l'absence de mouvements"

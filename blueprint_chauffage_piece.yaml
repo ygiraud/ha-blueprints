@@ -375,6 +375,12 @@ mode: restart
 max_exceeded: silent
 
 trigger:
+  - alias: Activation de la gestion du chauffage
+    trigger: state
+    entity_id: input_boolean.chauffage
+    to: "on"
+    id: activation_chauffage
+
   - alias: Réévaluation périodique
     trigger: time_pattern
     minutes: "/30"
@@ -475,7 +481,11 @@ trigger:
     weekday: [sat, sun]
     id: weekend_debut_soir
 
-condition: []
+condition:
+  - alias: Gestion du chauffage activée
+    condition: state
+    entity_id: input_boolean.chauffage
+    state: "on"
 
 action:
   - alias: Initialisation du contexte
@@ -530,7 +540,8 @@ action:
           {% elif personnes | count > 0 %}
             {% set personnes_absentes = personnes | rejectattr('state', 'eq', 'home') | list %}
             {% if personnes_absentes | count == personnes | count %}
-              {% set debut_absence = personnes_absentes | map(attribute='last_changed') | map('as_timestamp') | max(default=as_timestamp(now())) %}
+              {% set ts_absence = personnes_absentes | map(attribute='last_changed') | map('as_timestamp') | list %}
+              {% set debut_absence = ts_absence | max if ts_absence | count > 0 else as_timestamp(now()) %}
               {{ (as_timestamp(now()) - debut_absence) >= (delai * 60) }}
             {% else %}
               false
@@ -629,6 +640,11 @@ action:
         {% else %}
           eco
         {% endif %}
+      netatmo_a_regler: >-
+        {{ climate_entity_ids
+          | reject('is_state', 'unavailable')
+          | reject('is_state_attr', 'temperature', temperature_cible | float(0))
+          | list }}
 
   - alias: Logique métier
     choose:
@@ -640,15 +656,15 @@ action:
         sequence:
           - alias: Appliquer la température aux Netatmo
             if:
-              - alias: Vérifier la présence de chauffages Netatmo
+              - alias: Vérifier qu'une consigne Netatmo doit changer
                 condition: template
-                value_template: "{{ climate_entity_ids | count > 0 }}"
+                value_template: "{{ netatmo_a_regler | count > 0 }}"
             then:
               - alias: Régler les Netatmo
                 action: script.set_netatmo_temperature_safe
                 data:
                   target:
-                    entity_id: !input climate_entities
+                    entity_id: "{{ netatmo_a_regler }}"
                   temperature: "{{ temperature_cible | float }}"
           - alias: Appliquer le mode aux NodOn
             if:
@@ -688,15 +704,15 @@ action:
         sequence:
           - alias: Appliquer la température aux Netatmo
             if:
-              - alias: Vérifier la présence de chauffages Netatmo
+              - alias: Vérifier qu'une consigne Netatmo doit changer
                 condition: template
-                value_template: "{{ climate_entity_ids | count > 0 }}"
+                value_template: "{{ netatmo_a_regler | count > 0 }}"
             then:
               - alias: Régler les Netatmo
                 action: script.set_netatmo_temperature_safe
                 data:
                   target:
-                    entity_id: !input climate_entities
+                    entity_id: "{{ netatmo_a_regler }}"
                   temperature: "{{ temperature_cible | float }}"
           - alias: Appliquer le mode aux NodOn
             if:
@@ -731,15 +747,15 @@ action:
     default:
       - alias: Appliquer la température aux Netatmo
         if:
-          - alias: Vérifier la présence de chauffages Netatmo
+          - alias: Vérifier qu'une consigne Netatmo doit changer
             condition: template
-            value_template: "{{ climate_entity_ids | count > 0 }}"
+            value_template: "{{ netatmo_a_regler | count > 0 }}"
         then:
           - alias: Régler les Netatmo
             action: script.set_netatmo_temperature_safe
             data:
               target:
-                entity_id: !input climate_entities
+                entity_id: "{{ netatmo_a_regler }}"
               temperature: "{{ temperature_cible | float }}"
       - alias: Appliquer le mode aux NodOn
         if:
