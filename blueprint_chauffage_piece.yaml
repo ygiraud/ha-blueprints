@@ -371,8 +371,28 @@ blueprint:
                 - label: Hors-gel
                   value: hors-gel
 
+    debug_section:
+      name: Debug
+      icon: mdi:bug
+      description: >-
+        Notification de debug envoyée via Notification Engine quand
+        input_boolean.debug est activé. Laisser vide pour désactiver.
+      collapsed: true
+      input:
+        debug_notify_persons:
+          name: Personnes notifiées en debug
+          description: Personnes qui reçoivent le message de debug du chauffage.
+          default: []
+          selector:
+            entity:
+              domain: person
+              multiple: true
+
 mode: restart
 max_exceeded: silent
+
+trigger_variables:
+  persons: !input persons
 
 trigger:
   - alias: Activation de la gestion du chauffage
@@ -423,8 +443,6 @@ trigger:
     for:
       minutes: !input absence_delay
     id: absence_confirmee_personnes
-    variables:
-      persons: !input persons
 
   - alias: Fenêtre ouverte avec délai
     trigger: state
@@ -504,6 +522,7 @@ action:
       fenetres_surveillees: !input window_sensors
       climate_entity_ids: !input climate_entities
       nodon_entity_ids: !input nodon_select_entities
+      debug_persons: !input debug_notify_persons
       delai_fenetre: !input window_open_delay
       delai_absence: !input absence_delay
       temperature_confort: !input confort_temperature
@@ -803,13 +822,12 @@ action:
   - alias: Debug
     if:
       - condition: template
-        value_template: "{{ action_effectuee | bool and is_state('input_boolean.debug', 'on') }}"
+        value_template: "{{ action_effectuee | bool and is_state('input_boolean.debug', 'on') and debug_persons | count > 0 }}"
     then:
       - alias: Envoyer debug via notification engine
         action: notification_engine.create_event
         target:
-          entity_id:
-            - person.yoan
+          entity_id: !input debug_notify_persons
         data:
           key: debug_chauffage
           strategy: info

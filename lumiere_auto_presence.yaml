@@ -1,6 +1,6 @@
 blueprint:
   name: Lumière automatique sur présence
-  description: Allume ou éteint la lumière en fonction de la présence dans la pièce
+  description: Allume ou éteint la lumière en fonction de la présence, avec activation séparée jour/nuit
   domain: automation
   author: Yoan
   input:
@@ -21,7 +21,37 @@ blueprint:
           entity:
             - domain: light
 
-mode: single
+    enabled_day:
+      name: Activé en journée
+      description: Active l'automatisation quand le mode de maison n'est pas Nuit
+      default: true
+      selector:
+        boolean: {}
+
+    enabled_night:
+      name: Activé la nuit
+      description: Active l'automatisation quand le mode de maison est Nuit
+      default: true
+      selector:
+        boolean: {}
+
+    use_minimum_on_time:
+      name: Utiliser une durée minimale d'allumage
+      description: Empêche l'extinction immédiate après disparition de présence
+      default: false
+      selector:
+        boolean: {}
+
+    minimum_on_time:
+      name: Durée minimale d'allumage
+      description: Temps minimum avant extinction après disparition de présence
+      default:
+        minutes: 2
+      selector:
+        duration:
+          enable_second: true
+
+mode: restart
 max_exceeded: silent
 
 triggers:
@@ -39,24 +69,57 @@ triggers:
     to: "off"
     id: absent
 
+  - alias: Absence maintenue pendant la durée minimale
+    trigger: state
+    entity_id: !input presence_entity
+    to: "off"
+    for: !input minimum_on_time
+    id: absent_delayed
+
+variables:
+  enabled_day: !input enabled_day
+  enabled_night: !input enabled_night
+  use_minimum_on_time: !input use_minimum_on_time
+  is_night: "{{ states('input_select.mode_de_maison') == 'Nuit' }}"
+  automation_enabled: >-
+    {{ (is_night and enabled_night) or
+       (not is_night and enabled_day) }}
+
 actions:
   - alias: Gérer la lumière selon la présence
     choose:
       - alias: Allumer si présence détectée
         conditions:
           - condition: trigger
-            id:
-              - present
+            id: present
+          - condition: template
+            value_template: "{{ automation_enabled }}"
         sequence:
           - alias: Allumer la lumière
             action: light.turn_on
             target: !input light_target
 
-      - alias: Éteindre si absence détectée
+      - alias: Éteindre si absence détectée (sans durée minimale)
         conditions:
           - condition: trigger
-            id:
-              - absent
+            id: absent
+          - condition: template
+            value_template: "{{ not use_minimum_on_time }}"
+          - condition: template
+            value_template: "{{ automation_enabled }}"
+        sequence:
+          - alias: Éteindre la lumière
+            action: light.turn_off
+            target: !input light_target
+
+      - alias: Éteindre si absence maintenue (avec durée minimale)
+        conditions:
+          - condition: trigger
+            id: absent_delayed
+          - condition: template
+            value_template: "{{ use_minimum_on_time }}"
+          - condition: template
+            value_template: "{{ automation_enabled }}"
         sequence:
           - alias: Éteindre la lumière
             action: light.turn_off

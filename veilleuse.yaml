@@ -36,43 +36,61 @@ blueprint:
           max: 100
           unit_of_measurement: "%"
 
-# If motion is detected within the delay,
-# we restart the script.
 mode: restart
 max_exceeded: silent
 
-triggers:
-  trigger: state
-  entity_id: !input motion_entity
-  from: "off"
-  to: "on"
+variables:
+  brightness_pct: !input brightness
+  light_entity: !input light
 
-conditions:
-  - condition: and
-    conditions:
-      - condition: sun
-        before: sunrise
-        after: sunset
-      - condition: state
-        entity_id: !input light
-        state: "off"
+triggers:
+  - alias: Mouvement détecté
+    trigger: state
+    entity_id: !input motion_entity
+    from: "off"
+    to: "on"
+    id: motion_on
+
+  - alias: Plus de mouvement pendant le temps d'attente
+    trigger: state
+    entity_id: !input motion_entity
+    to: "off"
+    for:
+      seconds: !input no_motion_wait
+    id: motion_off
 
 actions:
-  - service: light.turn_on
-    metadata: {}
-    data:
-      color_temp_kelvin: 2000
-      brightness_pct: !input brightness
-      entity_id: !input light
-  - alias: "Attend l'absence de mouvements"
-    wait_for_trigger:
-      trigger: state
-      entity_id: !input motion_entity
-      from: "on"
-      to: "off"
-  - alias: "Attend un temps défini"
-    delay: !input no_motion_wait
-  - service: light.turn_off
-    metadata: {}
-    data:
-      entity_id: !input light
+  - alias: Gérer la veilleuse
+    choose:
+      - alias: Allumer la nuit si la lumière est éteinte
+        conditions:
+          - condition: trigger
+            id: motion_on
+          - condition: sun
+            before: sunrise
+            after: sunset
+          - condition: state
+            entity_id: !input light
+            state: "off"
+        sequence:
+          - alias: Allumer la veilleuse
+            action: light.turn_on
+            target:
+              entity_id: !input light
+            data:
+              color_temp_kelvin: 2000
+              brightness_pct: !input brightness
+
+      - alias: Éteindre si la lumière est encore à la luminosité de veilleuse
+        conditions:
+          - condition: trigger
+            id: motion_off
+          - condition: template
+            value_template: >-
+              {{ (state_attr(light_entity, 'brightness') | float(0))
+                 <= (brightness_pct | float(1) * 255 / 100) + 2 }}
+        sequence:
+          - alias: Éteindre la veilleuse
+            action: light.turn_off
+            target:
+              entity_id: !input light
