@@ -48,11 +48,12 @@ Fichier source : [`veilleuse.yaml`](https://github.com/ygiraud/ha-blueprints/blo
 
 ### Lumière automatique sur présence
 
-Allume la lumiere a la detection de presence et l'eteint a la disparition de presence.
+Allume la lumiere a la detection de presence et l'eteint a la disparition de presence, avec activation separee jour / nuit et duree minimale d'allumage optionnelle.
 
 Pré-requis :
 - un capteur `binary_sensor` avec `device_class: occupancy`
 - une ou plusieurs entités `light`
+- l'entité `input_select.mode_de_maison` (le mode `Nuit` distingue jour et nuit)
 
 Fichier source : [`lumiere_auto_presence.yaml`](https://github.com/ygiraud/ha-blueprints/blob/main/lumiere_auto_presence.yaml)
 
@@ -88,16 +89,50 @@ Pilote le chauffage d'une piece en combinant :
 
 Le blueprint reevalue son etat toutes les 30 minutes et sur les changements de presence, de mode maison, de fenetres et d'horaires.
 
+Fonctionnement :
+- l'activation depend de `input_boolean.chauffage`
+- l'absence est mesuree depuis le dernier depart de la maison, via les capteurs `binary_sensor.<personne>_a_la_maison` (repli sur l'entité `person` si le capteur n'existe pas)
+- les appels Netatmo ne sont faits que si la consigne differe de la cible, pour eviter les erreurs API 429
+
 Pré-requis :
 - Home Assistant `2024.6.0` minimum
 - au moins un chauffage Netatmo (`climate`) et/ou NodOn (`select` MQTT)
 - si aucune personne n'est configuree, l'entité `input_select.mode_de_maison`
 - le script `script.set_netatmo_temperature_safe` pour les chauffages Netatmo
-- optionnel : `input_boolean.debug` et `notification_engine.create_event` pour les notifications de debug
+- `input_boolean.chauffage` pour activer la gestion
+- optionnel : un capteur binaire `binary_sensor.<personne>_a_la_maison` (template, `home` / hors `home`) par personne suivie
+- optionnel : `input_boolean.debug`, `notification_engine.create_event` et l'entrée `Personnes notifiées en debug` pour les notifications de debug (vide = debug desactive)
 
 Fichier source : [`blueprint_chauffage_piece.yaml`](https://github.com/ygiraud/ha-blueprints/blob/main/blueprint_chauffage_piece.yaml)
 
 [![Importer dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/ygiraud/ha-blueprints/main/blueprint_chauffage_piece.yaml)
+
+### Sécurité - Déclenchement du panel d'alarme
+
+Passe un `alarm_control_panel` en `triggered` quand un capteur surveillé reste a `on` pendant un delai configurable (5 s par defaut), uniquement si le panel est `disarmed`.
+
+Pré-requis :
+- une entité `alarm_control_panel`
+- un ou plusieurs capteurs a surveiller
+
+Fichier source : [`securite_alarme_declenchement.yaml`](https://github.com/ygiraud/ha-blueprints/blob/main/securite_alarme_declenchement.yaml)
+
+[![Importer dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/ygiraud/ha-blueprints/main/securite_alarme_declenchement.yaml)
+
+### Sécurité - Actions après déclenchement de l'alarme
+
+Quand le panel passe a `triggered`, cree en parallele un evenement `Notification Engine` de type alerte (liste des capteurs actifs, action `OK`) et lance un script d'alerte locale.
+
+Pré-requis :
+- une entité `alarm_control_panel`
+- les capteurs surveillés (pour le message)
+- une ou plusieurs entités `person` a notifier
+- une entité `script` d'alerte locale
+- le service `notification_engine.create_event`
+
+Fichier source : [`securite_alarme_actions.yaml`](https://github.com/ygiraud/ha-blueprints/blob/main/securite_alarme_actions.yaml)
+
+[![Importer dans Home Assistant](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/ygiraud/ha-blueprints/main/securite_alarme_actions.yaml)
 
 ## Import manuel
 
