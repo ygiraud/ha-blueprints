@@ -144,14 +144,14 @@ blueprint:
               step: 0.5
               mode: box
               unit_of_measurement: "°C"
-        eco_delta:
-          name: Écart pour le mode éco
-          description: Soustraction appliquée à la température de confort pour le mode éco.
-          default: 3
+        eco_temperature:
+          name: Température éco
+          description: Température appliquée aux Netatmo en mode éco.
+          default: 17
           selector:
             number:
-              min: 0
-              max: 8
+              min: 7
+              max: 25
               step: 0.5
               mode: box
               unit_of_measurement: "°C"
@@ -526,7 +526,7 @@ action:
       delai_fenetre: !input window_open_delay
       delai_absence: !input absence_delay
       temperature_confort: !input confort_temperature
-      delta_eco: !input eco_delta
+      temperature_eco: !input eco_temperature
       temperature_hors_gel: !input hors_gel_temperature
       mode_fenetre_configure: !input mode_fenetre
       mode_absence_configure: !input mode_absence
@@ -654,7 +654,7 @@ action:
         {% elif mode_calcule == 'confort -2' %}
           {{ temperature_confort - 2 }}
         {% elif mode_calcule == 'éco' %}
-          {{ temperature_confort - delta_eco }}
+          {{ temperature_eco }}
         {% else %}
           {{ temperature_hors_gel }}
         {% endif %}
